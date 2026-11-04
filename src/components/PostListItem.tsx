@@ -49,9 +49,13 @@ export default function PostListItem({
 
   const shouldShowImage = isDetailedPost || post.image;
   const shouldShowDescription = isDetailedPost || !post.image;
+  const Container = isDetailedPost ? View : Pressable;
+
   return (
-      <Pressable
-        onPress={() => router.push(`/post/${post.id}`)}
+      <Container
+        onPress={
+          isDetailedPost ? undefined : () => router.push(`/post/${post.id}`)
+        }
         style={{
           width: "100%",
           paddingHorizontal: 15,
@@ -88,7 +92,10 @@ export default function PostListItem({
             )}
           </View>
           <Pressable
-            onPress={() => console.error("Pressed")}
+            onPress={(e) => {
+              e.stopPropagation();
+              console.log("Pressed");
+            }}
             style={{
               marginLeft: "auto",
               backgroundColor: "#0d469b",
@@ -143,12 +150,18 @@ export default function PostListItem({
         <View style={{ flexDirection: "row" }}>
           <View style={{ flexDirection: "row", gap: 10 }}>
             <View style={[{ flexDirection: "row" }, styles.iconBox]}>
-              <MaterialCommunityIcons
-                onPress={() => upvote(1)}
-                name={isUpvoted ? "arrow-up-bold" : "arrow-up-bold-outline"}
-                size={19}
-                color={isUpvoted ? "crimson" : "black"}
-              />
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  upvote(1);
+                }}
+              >
+                <MaterialCommunityIcons
+                  name={isUpvoted ? "arrow-up-bold" : "arrow-up-bold-outline"}
+                  size={19}
+                  color={isUpvoted ? "crimson" : "black"}
+                />
+              </Pressable>
               <Text
                 style={{
                   fontWeight: "500",
@@ -167,16 +180,30 @@ export default function PostListItem({
                   alignSelf: "center",
                 }}
               />
-              <MaterialCommunityIcons
-                onPress={() => upvote(-1)}
-                name={
-                  isDownvoted ? "arrow-down-bold" : "arrow-down-bold-outline"
-                }
-                size={19}
-                color={isDownvoted ? "crimson" : "black"}
-              />
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  upvote(-1);
+                }}
+              >
+                <MaterialCommunityIcons
+                  name={
+                    isDownvoted ? "arrow-down-bold" : "arrow-down-bold-outline"
+                  }
+                  size={19}
+                  color={isDownvoted ? "crimson" : "black"}
+                />
+              </Pressable>
             </View>
-            <View style={[{ flexDirection: "row" }, styles.iconBox]}>
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                if (!isDetailedPost) {
+                  router.push(`/post/${post.id}`);
+                }
+              }}
+              style={[{ flexDirection: "row" }, styles.iconBox]}
+            >
               <MaterialCommunityIcons
                 name="comment-outline"
                 size={19}
@@ -191,24 +218,32 @@ export default function PostListItem({
               >
                 {post.nr_of_comments?.[0]?.count ?? (post as any).comments?.length ?? 0}
               </Text>
-            </View>
+            </Pressable>
           </View>
           <View style={{ marginLeft: "auto", flexDirection: "row", gap: 10 }}>
-            <MaterialCommunityIcons
-              name="trophy-outline"
-              size={19}
-              color="black"
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
               style={styles.iconBox}
-            />
-            <MaterialCommunityIcons
-              name="share-outline"
-              size={19}
-              color="black"
+            >
+              <MaterialCommunityIcons
+                name="trophy-outline"
+                size={19}
+                color="black"
+              />
+            </Pressable>
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
               style={styles.iconBox}
-            />
+            >
+              <MaterialCommunityIcons
+                name="share-outline"
+                size={19}
+                color="black"
+              />
+            </Pressable>
           </View>
         </View>
-      </Pressable>
+      </Container>
   );
 }
 

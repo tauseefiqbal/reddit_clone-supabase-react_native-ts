@@ -1,7 +1,10 @@
 import { ComponentProps, useEffect, useState } from "react";
 import { ActivityIndicator, Image, View } from "react-native";
 import { useSession } from "@clerk/clerk-expo";
-import { resolveImageUri } from "../utils/supabaseImages";
+import {
+  downloadImageDataUri,
+  resolveImageUri,
+} from "../utils/supabaseImages";
 import { useSupabase } from "../lib/supabase";
 
 type SupabaseImageProps = {
@@ -18,6 +21,7 @@ export default function SupabaseImage({
   const [imageUri, setImageUri] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [triedFallback, setTriedFallback] = useState(false);
 
   const supabase = useSupabase();
   const { session } = useSession();
@@ -28,6 +32,7 @@ export default function SupabaseImage({
     const load = async () => {
       setIsLoading(true);
       setHasError(false);
+      setTriedFallback(false);
       setImageUri(undefined);
 
       if (!path || !bucket) {
@@ -96,8 +101,19 @@ export default function SupabaseImage({
       source={{ uri: imageUri }}
       style={style}
       resizeMode="cover"
-      onError={(e) => {
-        console.warn("Failed to display Supabase image:", e.nativeEvent?.error);
+      onError={async (e) => {
+        if (!triedFallback && !imageUri.startsWith("data:")) {
+          setTriedFallback(true);
+          const fallbackDataUri = await downloadImageDataUri(
+            path,
+            bucket,
+            supabase,
+          );
+          if (fallbackDataUri) {
+            setImageUri(fallbackDataUri);
+            return;
+          }
+        }
         setHasError(true);
       }}
       {...imageProps}

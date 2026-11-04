@@ -30,6 +30,7 @@ export default function DetailedPost() {
   const [comment, setComment] = useState<string>("");
   const [isInputFocused, setIsInputFocused] = useState<boolean>(false);
   const [replyToId, setReplyToId] = useState<string | null>(null);
+  const [isDeleted, setIsDeleted] = useState<boolean>(false);
 
   const inputRef = useRef<TextInput | null>(null);
 
@@ -45,20 +46,45 @@ export default function DetailedPost() {
   } = useQuery({
     queryKey: ["posts", id],
     queryFn: () => fetchPostById(id, supabase),
+    enabled: !!id && !isDeleted,
   });
 
   const { data: comments } = useQuery({
     queryKey: ["comments", { postId: id }],
     queryFn: () => fetchComments(id, supabase),
+    enabled: !!id && !isDeleted,
   });
 
-  const { mutate: remove } = useMutation({
-    mutationFn: () => deletePostById(id, supabase),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      router.back();
+  const { mutate: remove, isPending: isDeleting } = useMutation({
+    mutationFn: () => {
+      setIsDeleted(true);
+      return deletePostById(id, supabase);
+    },
+    onSuccess: async () => {
+      queryClient.removeQueries({ queryKey: ["posts", id], exact: true });
+      queryClient.setQueryData(["posts"], (oldData: any) => {
+        if (!oldData?.pages) return oldData;
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page: any[]) =>
+            page.filter((item) => item.id !== id),
+          ),
+        };
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["posts"],
+        exact: true,
+      });
+      if (router.canDismiss()) {
+        router.dismissAll();
+      } else if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/");
+      }
     },
     onError: (error) => {
+      setIsDeleted(false);
       Alert.alert("Error", error.message);
     },
   });
@@ -81,7 +107,7 @@ export default function DetailedPost() {
     inputRef.current?.focus();
   }, []);
 
-  if (isLoading) {
+  if (isLoading || isDeleting || isDeleted) {
     return <ActivityIndicator />;
   }
 
@@ -100,7 +126,7 @@ export default function DetailedPost() {
           headerRight: () => (
             <View style={{ flexDirection: "row", gap: 10 }}>
               <Entypo
-                onPress={() => remove()}
+                onPress={() => !isDeleting && remove()}
                 name="trash"
                 size={24}
                 color="white"

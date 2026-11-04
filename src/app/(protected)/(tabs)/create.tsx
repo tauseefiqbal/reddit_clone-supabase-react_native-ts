@@ -34,7 +34,7 @@ export default function CreateScreen() {
   const supabase = useSupabase();
 
   const { mutate, isPending } = useMutation({
-    mutationFn: (image: string | undefined) => {
+    mutationFn: async () => {
       if (!group) {
         throw new Error("Please select a group");
       }
@@ -42,19 +42,28 @@ export default function CreateScreen() {
         throw new Error("Title is required");
       }
 
+      const imagePath = image
+        ? await uploadImage(
+            image.uri,
+            supabase,
+            image.mimeType ?? undefined,
+            image.base64,
+          )
+        : undefined;
+
       return insertPost(
         {
           title,
           description: bodyText,
           group_id: group.id,
-          image,
+          image: imagePath,
         },
         supabase
       );
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       // invalidate queries that might have been affected by inserting a post
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      await queryClient.invalidateQueries({ queryKey: ["posts"] });
 
       goBack();
     },
@@ -64,18 +73,15 @@ export default function CreateScreen() {
     },
   });
 
-  const onPostClick = async () => {
-    let imagePath = image
-      ? await uploadImage(image.uri, supabase, image.mimeType ?? undefined)
-      : undefined;
-
-    mutate(imagePath);
+  const onPostClick = () => {
+    mutate();
   };
 
   const goBack = () => {
     setTitle("");
     setBodyText("");
     setGroup(null);
+    setImage(null);
     router.back();
   };
 
@@ -85,9 +91,8 @@ export default function CreateScreen() {
       mediaTypes: ["images"],
       allowsEditing: true,
       quality: 1,
+      base64: true,
     });
-
-    console.log(result);
 
     if (!result.canceled) {
       setImage(result.assets[0]);

@@ -1,13 +1,13 @@
 import {
   View,
   Text,
-  SafeAreaView,
   TextInput,
   FlatList,
   Pressable,
   Image,
   ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import AntDesign from "@expo/vector-icons/AntDesign";
 import { router } from "expo-router";
 import { useState } from "react";
