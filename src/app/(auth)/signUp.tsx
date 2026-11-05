@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Text, TextInput, Button, Platform, KeyboardAvoidingView, StyleSheet, Alert } from 'react-native'
+import { Text, TextInput, Button, View, Platform, KeyboardAvoidingView, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { useSignUp } from '@clerk/clerk-expo'
 import { useRouter } from 'expo-router'
 
@@ -12,34 +12,64 @@ export default function SignUpScreen() {
   const [password, setPassword] = React.useState('')
   const [pendingVerification, setPendingVerification] = React.useState(false)
   const [code, setCode] = React.useState('')
+  const [errorMessage, setErrorMessage] = React.useState('')
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+
+  const showError = (title: string, msg: string) => {
+    setErrorMessage(msg)
+    if (Platform.OS !== 'web') {
+      Alert.alert(title, msg)
+    }
+  }
 
   // Handle submission of sign-up form
   const onSignUpPress = async () => {
-    if (!isLoaded) return
+    if (!isLoaded) {
+      showError('Loading', 'Authentication service is still loading. Please wait a moment and try again.')
+      return
+    }
+    setErrorMessage('')
 
     const trimmedEmail = emailAddress.trim()
     const trimmedUsername = username.trim()
 
     if (!trimmedEmail) {
-      Alert.alert('Invalid Email', 'Please enter your email address.')
-      return
-    }
-    if (!trimmedUsername) {
-      Alert.alert('Invalid Username', 'Please choose a username.')
+      showError('Invalid Email', 'Please enter your email address.')
       return
     }
     if (!password) {
-      Alert.alert('Missing Password', 'Please enter a password.')
+      showError('Missing Password', 'Please enter a password.')
       return
     }
 
     // Start sign-up process using email and password provided
+    setIsSubmitting(true)
     try {
-      await signUp.create({
-        emailAddress: trimmedEmail,
-        username: trimmedUsername,
-        password,
-      })
+      let signUpAttempt
+      try {
+        signUpAttempt = await signUp.create({
+          emailAddress: trimmedEmail,
+          ...(trimmedUsername ? { username: trimmedUsername } : {}),
+          password,
+        })
+      } catch (createErr: any) {
+        const paramName = createErr?.errors?.[0]?.meta?.paramName
+        const code = createErr?.errors?.[0]?.code
+        if (paramName === 'username' || code === 'form_param_unknown') {
+          signUpAttempt = await signUp.create({
+            emailAddress: trimmedEmail,
+            password,
+          })
+        } else {
+          throw createErr
+        }
+      }
+
+      if (signUpAttempt.status === 'complete') {
+        await setActive({ session: signUpAttempt.createdSessionId })
+        router.replace('/')
+        return
+      }
 
       // Send user an email with verification code
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' })
@@ -48,22 +78,29 @@ export default function SignUpScreen() {
       // and capture OTP code
       setPendingVerification(true)
     } catch (err: any) {
-      const firstError = err?.errors?.[0]
-      const errorMsg = firstError?.longMessage || firstError?.message || err?.message || 'Sign up failed. Please try again.'
-      Alert.alert('Sign Up Failed', errorMsg)
+      const errorList = err?.errors
+        ?.map((e: any) => e.longMessage || e.message)
+        .filter(Boolean)
+        .join('\n')
+      const errorMsg = errorList || err?.message || 'Sign up failed. Please try again.'
+      showError('Sign Up Failed', errorMsg)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   // Handle submission of verification form
   const onVerifyPress = async () => {
     if (!isLoaded) return
+    setErrorMessage('')
 
     const trimmedCode = code.trim()
     if (!trimmedCode) {
-      Alert.alert('Invalid Code', 'Please enter your verification code.')
+      showError('Invalid Code', 'Please enter your verification code.')
       return
     }
 
+    setIsSubmitting(true)
     try {
       // Use the code the user provided to attempt verification
       const signUpAttempt = await signUp.attemptEmailAddressVerification({
@@ -77,11 +114,14 @@ export default function SignUpScreen() {
         router.replace('/')
       } else {
         console.log('Verification status:', signUpAttempt.status)
+        showError('Verification Incomplete', `Status: ${signUpAttempt.status}`)
       }
     } catch (err: any) {
       const firstError = err?.errors?.[0]
       const errorMsg = firstError?.longMessage || firstError?.message || err?.message || 'Verification failed. Please try again.'
-      Alert.alert('Verification Failed', errorMsg)
+      showError('Verification Failed', errorMsg)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -89,6 +129,7 @@ export default function SignUpScreen() {
     return (
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Text style={styles.title}>Verify Your Email</Text>
+        {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
         <TextInput
           style={styles.input}
           value={code}
@@ -96,7 +137,7 @@ export default function SignUpScreen() {
           placeholderTextColor="#aaa"
           onChangeText={setCode}
         />
-        <Button title="Verify" onPress={onVerifyPress} />
+        <Button title={isSubmitting ? "Verifying..." : "Verify"} onPress={onVerifyPress} disabled={isSubmitting} />
       </KeyboardAvoidingView>
     )
   }
@@ -104,6 +145,7 @@ export default function SignUpScreen() {
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Text style={styles.title}>Sign Up</Text>
+      {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
       <TextInput
         style={styles.input}
         autoCapitalize="none"
@@ -118,7 +160,7 @@ export default function SignUpScreen() {
         style={styles.input}
         autoCapitalize="none"
         value={username}
-        placeholder="Username"
+        placeholder="Username (optional)"
         placeholderTextColor="#aaa"
         onChangeText={setUsername}
       />
@@ -130,7 +172,18 @@ export default function SignUpScreen() {
         secureTextEntry
         onChangeText={setPassword}
       />
-      <Button title="Continue" onPress={onSignUpPress} />
+      <View
+        id="clerk-captcha"
+        nativeID="clerk-captcha"
+        style={{ width: '100%', minWidth: 300, minHeight: 68, alignItems: 'center', justifyContent: 'center', marginBottom: 10 }}
+      />
+      <Button title={isSubmitting ? "Signing Up..." : "Sign Up"} onPress={onSignUpPress} disabled={isSubmitting} />
+      <View style={styles.signInContainer}>
+        <Text style={styles.text}>Already have an account?</Text>
+        <TouchableOpacity onPress={() => router.push('/signIn')}>
+          <Text style={styles.signInText}> Sign in</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   )
 }
@@ -149,6 +202,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: "black",
   },
+  errorText: {
+    color: "#d9534f",
+    marginBottom: 15,
+    textAlign: "center",
+    fontSize: 14,
+  },
   input: {
     width: "100%",
     height: 50,
@@ -158,5 +217,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     marginBottom: 15,
     backgroundColor: "white",
+  },
+  signInContainer: {
+    flexDirection: "row",
+    marginTop: 15,
+  },
+  text: {
+    fontSize: 16,
+    color: "grey",
+  },
+  signInText: {
+    fontSize: 16,
+    color: "#007bff",
+    fontWeight: "bold",
   },
 });
